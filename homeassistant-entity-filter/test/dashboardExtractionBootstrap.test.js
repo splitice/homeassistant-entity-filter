@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { BootstrapManager } from "../src/bootstrap.js";
+import { DEFAULT_DASHBOARD_EXTRACTION_RULES } from "../src/dashboardEntities.js";
 
 test("BootstrapManager applies configured dashboard extraction rules to required entities", async () => {
   const calls = [];
@@ -9,6 +10,7 @@ test("BootstrapManager applies configured dashboard extraction rules to required
     requiredEntities: ["sensor.always_required"],
     dashboards: ["dashboard-kiosk"],
     dashboardExtractionRules: [
+      ...DEFAULT_DASHBOARD_EXTRACTION_RULES,
       {
         card_type: "custom:test-card",
         mode: "template_entities",

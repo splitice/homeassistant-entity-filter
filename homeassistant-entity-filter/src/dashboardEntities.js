@@ -50,7 +50,7 @@ function visitNode(node, entities, visited, extractionRules) {
   applyExtractionRules(node, entities, extractionRules);
 
   for (const [key, value] of Object.entries(node)) {
-    if (key === "entities" && Array.isArray(value)) {
+    if ((key === "entities" || key === "badges") && Array.isArray(value)) {
       for (const entry of value) {
         addEntityReference(entities, entry);
       }

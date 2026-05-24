@@ -4,6 +4,7 @@ import {
   buildAddonRuntimeConfig,
   DEFAULT_ADDON_OPTIONS,
   resolveInternalHomeAssistantUrl,
+  resolveInternalHomeAssistantUrlFromConfig,
 } from "../src/addonMain.js";
 
 test("buildAddonRuntimeConfig maps default add-on options to internal runtime settings", () => {
@@ -94,8 +95,54 @@ test("resolveInternalHomeAssistantUrl switches to https when core ssl is enabled
 });
 
 test("resolveInternalHomeAssistantUrl rejects missing supervisor token", async () => {
+  const logger = { warn() {} };
+  const url = await resolveInternalHomeAssistantUrl("", {
+    logger,
+    readFile: async () => "http:\n  server_port: 9443\n  ssl_certificate: /ssl/fullchain.pem\n",
+  });
+
+  assert.equal(url, "https://homeassistant:9443");
+});
+
+test("resolveInternalHomeAssistantUrl falls back to the default url when config parsing fails", async () => {
+  const warnings = [];
+  const url = await resolveInternalHomeAssistantUrl("", {
+    logger: {
+      warn(message) {
+        warnings.push(message);
+      },
+    },
+    readFile: async () => {
+      throw new Error("missing file");
+    },
+  });
+
+  assert.equal(url, "http://homeassistant:8123");
+  assert.equal(warnings.length, 2);
+});
+
+test("resolveInternalHomeAssistantUrlFromConfig uses default http settings when http is omitted", async () => {
+  const url = await resolveInternalHomeAssistantUrlFromConfig({
+    readFile: async () => "default_config:\n",
+  });
+
+  assert.equal(url, "http://homeassistant:8123");
+});
+
+test("resolveInternalHomeAssistantUrlFromConfig reads configured port and ssl", async () => {
+  const url = await resolveInternalHomeAssistantUrlFromConfig({
+    readFile: async () => "http:\n  server_port: 9443\n  ssl_certificate: /ssl/fullchain.pem\n",
+  });
+
+  assert.equal(url, "https://homeassistant:9443");
+});
+
+test("resolveInternalHomeAssistantUrlFromConfig rejects invalid yaml roots", async () => {
   await assert.rejects(
-    () => resolveInternalHomeAssistantUrl(""),
-    /SUPERVISOR_TOKEN is required/,
+    () =>
+      resolveInternalHomeAssistantUrlFromConfig({
+        readFile: async () => "- not-an-object\n",
+      }),
+    /configuration root must be a YAML object/,
   );
 });

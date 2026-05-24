@@ -5,7 +5,9 @@ import { normalizeConfig } from "./config.js";
 import { startServer } from "./server.js";
 
 const ADDON_OPTIONS_PATH = "/data/options.json";
-const INTERNAL_HOME_ASSISTANT_URL = "http://homeassistant:8123";
+const SUPERVISOR_CORE_INFO_URL = "http://supervisor/core/info";
+const DEFAULT_INTERNAL_HOME_ASSISTANT_URL = "http://homeassistant:8123";
+const INTERNAL_HOME_ASSISTANT_HOST = "homeassistant";
 const INTERNAL_LISTEN_ADDR = "0.0.0.0:10111";
 const SUPERVISOR_WEBSOCKET_URL = "ws://supervisor/core/websocket";
 
@@ -36,12 +38,55 @@ export async function loadAddonOptions(path = ADDON_OPTIONS_PATH) {
   return parsed;
 }
 
-export function buildAddonRuntimeConfig(options = {}, source = ADDON_OPTIONS_PATH) {
+export async function resolveInternalHomeAssistantUrl(
+  supervisorToken,
+  {
+    fetchImpl = fetch,
+    supervisorCoreInfoUrl = SUPERVISOR_CORE_INFO_URL,
+  } = {},
+) {
+  if (!supervisorToken) {
+    throw new Error("SUPERVISOR_TOKEN is required to discover the Home Assistant Core address");
+  }
+
+  const response = await fetchImpl(supervisorCoreInfoUrl, {
+    headers: {
+      Authorization: `Bearer ${supervisorToken}`,
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `failed to query Home Assistant Core info from Supervisor: HTTP ${response.status}`,
+    );
+  }
+
+  const payload = await response.json();
+  const coreInfo = payload?.data;
+  const port = coreInfo?.port;
+  const ssl = coreInfo?.ssl;
+
+  if (!Number.isInteger(port) || port <= 0 || typeof ssl !== "boolean") {
+    throw new Error("Supervisor returned invalid Home Assistant Core connection details");
+  }
+
+  const protocol = ssl ? "https" : "http";
+  return `${protocol}://${INTERNAL_HOME_ASSISTANT_HOST}:${port}`;
+}
+
+export function buildAddonRuntimeConfig(
+  options = {},
+  {
+    homeAssistantUrl = DEFAULT_INTERNAL_HOME_ASSISTANT_URL,
+    source = ADDON_OPTIONS_PATH,
+  } = {},
+) {
   return normalizeConfig(
     {
       ...DEFAULT_ADDON_OPTIONS,
       ...options,
-      homeassistant_url: INTERNAL_HOME_ASSISTANT_URL,
+      homeassistant_url: homeAssistantUrl,
       access_token: "",
       listen_addr: INTERNAL_LISTEN_ADDR,
     },
@@ -51,10 +96,12 @@ export function buildAddonRuntimeConfig(options = {}, source = ADDON_OPTIONS_PAT
 
 export async function main() {
   const options = await loadAddonOptions();
-  const config = buildAddonRuntimeConfig(options);
+  const supervisorToken = process.env.SUPERVISOR_TOKEN || null;
+  const homeAssistantUrl = await resolveInternalHomeAssistantUrl(supervisorToken);
+  const config = buildAddonRuntimeConfig(options, { homeAssistantUrl });
   await startServer(config, {
     logger: console,
-    bootstrapAccessToken: process.env.SUPERVISOR_TOKEN || null,
+    bootstrapAccessToken: supervisorToken,
     bootstrapWebSocketUrl: SUPERVISOR_WEBSOCKET_URL,
   });
 }

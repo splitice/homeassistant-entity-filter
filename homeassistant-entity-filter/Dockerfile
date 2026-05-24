@@ -1,13 +1,12 @@
-ARG BUILD_FROM
-FROM ${BUILD_FROM}
 ARG BUILD_ARCH
 ARG BUILD_VERSION
+FROM ghcr.io/home-assistant/base:latest
 
 LABEL \
   io.hass.name="Home Assistant Entity Filter" \
   io.hass.description="Transparent Home Assistant proxy with entity filtering and rate limiting" \
   io.hass.arch="${BUILD_ARCH}" \
-  io.hass.type="addon" \
+  io.hass.type="app" \
   io.hass.version="${BUILD_VERSION}"
 
 RUN apk add --no-cache nodejs npm

@@ -1,0 +1,47 @@
+name: Home Assistant Entity Filter
+slug: homeassistant-entity-filter
+description: Transparent Home Assistant proxy with entity filtering and rate limiting
+version: 0.1.0
+url: https://github.com/splitice/homeassistant-entity-filter
+startup: application
+boot: auto
+stage: experimental
+homeassistant_api: true
+hassio_api: true
+ingress: false
+arch:
+  - amd64
+  - aarch64
+  - armv7
+  - armhf
+  - i386
+webui: http://[HOST]:[PORT:10111]/
+ports:
+  10111/tcp: 10111
+ports_description:
+  10111/tcp: Transparent Home Assistant proxy
+options:
+  transparent: true
+  bootstrap_timeout_ms: 5000
+  bootstrap_cache_ttl_ms: 300000
+  warn_entity_updates_over_per_minute: 2
+  default_action: allow
+  required_entities: []
+  dashboards: []
+  rules: []
+schema:
+  transparent: bool
+  bootstrap_timeout_ms: "int(0,)"
+  bootstrap_cache_ttl_ms: "int(0,)"
+  warn_entity_updates_over_per_minute: "float(0,)"
+  default_action: "list(allow|deny)"
+  required_entities:
+    - str
+  dashboards:
+    - str
+  rules:
+    - name: str?
+      match_type: "list(exact|regex)"
+      match: str
+      action: "list(allow|deny)"
+      rate_limit_ms: "int(0,)?"

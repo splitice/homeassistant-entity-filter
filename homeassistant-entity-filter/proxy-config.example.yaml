@@ -1,0 +1,22 @@
+homeassistant_url: "http://homeassistant.local:8123"
+access_token: ""
+listen_addr: "0.0.0.0:10111"
+transparent: true
+bootstrap_timeout_ms: 5000
+bootstrap_cache_ttl_ms: 300000
+warn_entity_updates_over_per_minute: 2   # 0 disables warnings; trailing 3-minute average
+default_action: allow
+required_entities: []
+dashboards:
+  - default
+rules:
+  - name: "deny cameras"
+    match_type: regex
+    match: "^camera\\."
+    action: deny
+
+  - name: "throttle room temp"
+    match_type: regex
+    match: "^sensor\\.home_temperature(?:\\.|$)"
+    action: allow
+    rate_limit_ms: 1000

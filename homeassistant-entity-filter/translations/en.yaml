@@ -1,0 +1,27 @@
+configuration:
+  transparent:
+    name: Transparent mode
+    description: Strip forwarded headers before proxying to Home Assistant.
+  bootstrap_timeout_ms:
+    name: Bootstrap timeout (ms)
+    description: Timeout for dashboard and entity bootstrap websocket calls.
+  bootstrap_cache_ttl_ms:
+    name: Bootstrap cache TTL (ms)
+    description: How long dashboard bootstrap data should be cached.
+  warn_entity_updates_over_per_minute:
+    name: Entity update warning threshold
+    description: Warn if an allowed entity exceeds this average updates-per-minute rate over a trailing 3 minute window. Set to 0 to disable.
+  default_action:
+    name: Default action
+    description: Action to take for entities that do not match an explicit rule.
+  required_entities:
+    name: Required entities
+    description: Entities that should always be allowed unless an explicit rule overrides them.
+  dashboards:
+    name: Dashboards
+    description: Lovelace dashboard url_path values whose referenced entities should be treated as required.
+  rules:
+    name: Rules
+    description: Ordered entity filter and rate-limit rules.
+network:
+  10111/tcp: Transparent Home Assistant proxy

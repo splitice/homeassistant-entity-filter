@@ -1,0 +1,15 @@
+{
+  "name": "homeassistant-entity-filter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/cli.js --config proxy-config.yaml",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "http-proxy": "^1.18.1",
+    "ws": "^8.18.0",
+    "yaml": "^2.5.1"
+  }
+}

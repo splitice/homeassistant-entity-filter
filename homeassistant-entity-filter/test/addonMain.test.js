@@ -5,6 +5,7 @@ import {
   DEFAULT_ADDON_OPTIONS,
   resolveInternalHomeAssistantUrl,
 } from "../src/addonMain.js";
+import { DEFAULT_DASHBOARD_EXTRACTION_RULES } from "../src/dashboardEntities.js";
 
 test("buildAddonRuntimeConfig maps default add-on options to internal runtime settings", () => {
   const config = buildAddonRuntimeConfig(DEFAULT_ADDON_OPTIONS);
@@ -15,6 +16,7 @@ test("buildAddonRuntimeConfig maps default add-on options to internal runtime se
   assert.equal(config.transparent, true);
   assert.deepEqual(config.rules, []);
   assert.deepEqual(config.dashboards, []);
+  assert.deepEqual(config.dashboard_extraction_rules, DEFAULT_DASHBOARD_EXTRACTION_RULES);
 });
 
 test("buildAddonRuntimeConfig accepts a discovered Home Assistant URL override", () => {
@@ -25,10 +27,18 @@ test("buildAddonRuntimeConfig accepts a discovered Home Assistant URL override",
   assert.equal(config.homeassistant_url, "https://homeassistant:443");
 });
 
-test("buildAddonRuntimeConfig preserves dashboards and rules", () => {
+test("buildAddonRuntimeConfig preserves dashboards, rules, and custom extraction rules", () => {
   const config = buildAddonRuntimeConfig(
     {
       dashboards: ["dashboard-kiosk"],
+      dashboard_extraction_rules: [
+        ...DEFAULT_ADDON_OPTIONS.dashboard_extraction_rules,
+        {
+          card_type: "custom:test-card",
+          mode: "template_entities",
+          fields: ["markdown"],
+        },
+      ],
       rules: [
         {
           name: "deny cameras",
@@ -44,6 +54,14 @@ test("buildAddonRuntimeConfig preserves dashboards and rules", () => {
   assert.deepEqual(config.dashboards, ["dashboard-kiosk"]);
   assert.equal(config.rules.length, 1);
   assert.equal(config.rules[0].name, "deny cameras");
+  assert.deepEqual(config.dashboard_extraction_rules, [
+    ...DEFAULT_DASHBOARD_EXTRACTION_RULES,
+    {
+      card_type: "custom:test-card",
+      mode: "template_entities",
+      fields: ["markdown"],
+    },
+  ]);
 });
 
 test("buildAddonRuntimeConfig validates add-on options through normalizeConfig", () => {

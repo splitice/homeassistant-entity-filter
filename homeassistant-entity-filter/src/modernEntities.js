@@ -5,12 +5,14 @@ export class ModernEntitiesManager {
     resolvePolicy,
     emitMessages,
     entityUpdateRateMonitor = null,
+    eventSummaryReporter = null,
     scheduler = defaultScheduler,
     logger = console,
   }) {
     this.resolvePolicy = resolvePolicy;
     this.emitMessages = emitMessages;
     this.entityUpdateRateMonitor = entityUpdateRateMonitor;
+    this.eventSummaryReporter = eventSummaryReporter;
     this.scheduler = scheduler;
     this.logger = logger;
     this.subscriptions = new Map();
@@ -70,30 +72,40 @@ export class ModernEntitiesManager {
   }
 
   _handleEvent(subscription, message) {
+    const resolvePolicy = createPolicyResolver((entityId) => this.resolvePolicy(entityId));
+    const filteredCount = countFilteredEntityOccurrences(message.event, resolvePolicy);
+    if (filteredCount > 0) {
+      this.eventSummaryReporter?.recordFiltered(filteredCount);
+    }
+
     if (!subscription.initialSnapshotSeen) {
       const filteredState = new Map();
       applyStatesUpdates(filteredState, message.event, (entityId) => {
-        return this.resolvePolicy(entityId).action === "allow";
+        return resolvePolicy(entityId).action === "allow";
       });
       subscription.currentState = filteredState;
       subscription.sentState = cloneStateMap(filteredState);
       subscription.initialSnapshotSeen = true;
-      return [{ ...message, event: buildSnapshotUpdates(filteredState) }];
+      const outgoingEvent = buildSnapshotUpdates(filteredState);
+      this.eventSummaryReporter?.recordForwarded(countEntityUpdates(outgoingEvent));
+      return [{ ...message, event: outgoingEvent }];
     }
 
     const changedEntities = applyStatesUpdates(subscription.currentState, message.event, (entityId) => {
-      return this.resolvePolicy(entityId).action === "allow";
+      return resolvePolicy(entityId).action === "allow";
     });
 
     const outgoingUpdates = createEmptyUpdates();
     const now = this.scheduler.now();
 
     for (const entityId of changedEntities) {
-      const policy = this.resolvePolicy(entityId);
+      const policy = resolvePolicy(entityId);
       if (policy.action !== "allow") {
         continue;
       }
-      this.entityUpdateRateMonitor?.record(entityId, now);
+      if (policy.matchedExplicitRule !== true) {
+        this.entityUpdateRateMonitor?.record(entityId, now);
+      }
 
       const rateLimitMs = policy.rateLimitMs ?? null;
       if (!rateLimitMs) {
@@ -124,6 +136,9 @@ export class ModernEntitiesManager {
           slot.nextAllowedAt = now;
         }
       } else {
+        if (slot.pending) {
+          this.eventSummaryReporter?.recordRateLimitedDropped(1);
+        }
         slot.pending = true;
       }
     }
@@ -134,7 +149,9 @@ export class ModernEntitiesManager {
       return [];
     }
 
-    return [{ ...message, event: normalizeUpdatesShape(outgoingUpdates) }];
+    const outgoingEvent = normalizeUpdatesShape(outgoingUpdates);
+    this.eventSummaryReporter?.recordForwarded(countEntityUpdates(outgoingEvent));
+    return [{ ...message, event: outgoingEvent }];
   }
 
   _scheduleFlush(subscription) {
@@ -191,17 +208,26 @@ export class ModernEntitiesManager {
     }
 
     if (hasUpdates(outgoingUpdates)) {
-      Promise.resolve(
-        this.emitMessages([
+      const outgoingEvent = normalizeUpdatesShape(outgoingUpdates);
+      const forwardedCount = countEntityUpdates(outgoingEvent);
+      try {
+        const emitResult = this.emitMessages([
           {
             id: subscription.id,
             type: "event",
-            event: normalizeUpdatesShape(outgoingUpdates),
+            event: outgoingEvent,
           },
-        ]),
-      ).catch((error) => {
+        ]);
+        Promise.resolve(emitResult)
+          .then(() => {
+            this.eventSummaryReporter?.recordForwarded(forwardedCount);
+          })
+          .catch((error) => {
+            this.logger.error(`modern flush failed for subscription ${subscription.id}: ${error.message}`);
+          });
+      } catch (error) {
         this.logger.error(`modern flush failed for subscription ${subscription.id}: ${error.message}`);
-      });
+      }
     }
 
     this._scheduleFlush(subscription);
@@ -445,6 +471,62 @@ function syncStateMapEntry(destination, source, entityId) {
 
 function createEmptyUpdates() {
   return { c: {} };
+}
+
+function countEntityUpdates(updates) {
+  let count = 0;
+  if (updates?.a && typeof updates.a === "object" && !Array.isArray(updates.a)) {
+    count += Object.keys(updates.a).length;
+  }
+  if (Array.isArray(updates?.r)) {
+    count += updates.r.length;
+  }
+  if (updates?.c && typeof updates.c === "object" && !Array.isArray(updates.c)) {
+    count += Object.keys(updates.c).length;
+  }
+  return count;
+}
+
+function countFilteredEntityOccurrences(updates, resolvePolicy) {
+  let filteredCount = 0;
+  forEachEntityOccurrence(updates, (entityId) => {
+    if (resolvePolicy(entityId).action !== "allow") {
+      filteredCount += 1;
+    }
+  });
+  return filteredCount;
+}
+
+function forEachEntityOccurrence(updates, callback) {
+  if (updates?.a && typeof updates.a === "object" && !Array.isArray(updates.a)) {
+    for (const entityId of Object.keys(updates.a)) {
+      callback(entityId);
+    }
+  }
+
+  if (Array.isArray(updates?.r)) {
+    for (const entityId of updates.r) {
+      if (typeof entityId === "string") {
+        callback(entityId);
+      }
+    }
+  }
+
+  if (updates?.c && typeof updates.c === "object" && !Array.isArray(updates.c)) {
+    for (const entityId of Object.keys(updates.c)) {
+      callback(entityId);
+    }
+  }
+}
+
+function createPolicyResolver(resolvePolicy) {
+  const cache = new Map();
+  return (entityId) => {
+    if (!cache.has(entityId)) {
+      cache.set(entityId, resolvePolicy(entityId));
+    }
+    return cache.get(entityId);
+  };
 }
 
 function normalizeSubscriptionId(value) {

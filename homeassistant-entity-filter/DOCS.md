@@ -8,6 +8,7 @@ It can:
 
 - filter entities in or out by exact match or regular expression
 - rate limit specific entities while still delivering the latest value when the rate window reopens
+- emit a rolling 5-minute summary log for forwarded updates, filter drops, and rate-limit coalescing drops
 - proxy non-WebSocket traffic through unchanged
 - analyze configured dashboards and include their required entities automatically
 
@@ -98,6 +99,24 @@ rules:
     match: "sensor.ikea_of_sweden_inspelning_smart_plug_power"
     action: allow
     rate_limit_ms: 30000
+```
+
+## Dashboard extraction rules
+
+`dashboard_extraction_rules` controls additional dashboard bootstrap extraction behavior. These rules are separate from websocket filter `rules`.
+
+Built-in structural extraction already walks nested cards, custom card payloads, `visibility`, `conditions`, and action payloads. The built-in `custom:mushroom-template-badge` template parser is also enabled by default for `content`, `icon`, and `color`.
+
+In this pass, custom extraction rules support only `template_entities` mode:
+
+```yaml
+dashboard_extraction_rules:
+  - card_type: "custom:mushroom-template-badge"
+    mode: "template_entities"
+    fields:
+      - content
+      - icon
+      - color
 ```
 
 ## Standalone developer mode

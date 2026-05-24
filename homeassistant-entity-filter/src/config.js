@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import YAML from "yaml";
+import { DEFAULT_DASHBOARD_EXTRACTION_RULES } from "./dashboardEntities.js";
 
 export const DEFAULT_CONFIG = Object.freeze({
   access_token: "",
@@ -11,6 +12,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   default_action: "allow",
   required_entities: [],
   dashboards: [],
+  dashboard_extraction_rules: cloneDashboardExtractionRules(DEFAULT_DASHBOARD_EXTRACTION_RULES),
   rules: [],
 });
 
@@ -21,6 +23,13 @@ export const DEFAULT_CONFIG = Object.freeze({
  * @property {string} match
  * @property {'allow'|'deny'} action
  * @property {number} [rate_limit_ms]
+ */
+
+/**
+ * @typedef {Object} DashboardExtractionRuleConfig
+ * @property {string} card_type
+ * @property {'template_entities'} mode
+ * @property {string[]} fields
  */
 
 /**
@@ -35,6 +44,7 @@ export const DEFAULT_CONFIG = Object.freeze({
  * @property {'allow'|'deny'} default_action
  * @property {string[]} required_entities
  * @property {string[]} dashboards
+ * @property {DashboardExtractionRuleConfig[]} dashboard_extraction_rules
  * @property {FilterRuleConfig[]} rules
  */
 
@@ -97,6 +107,10 @@ export function normalizeConfig(rawConfig, source = "config") {
     `${source}: required_entities`,
   );
   const dashboards = normalizeStringArray(config.dashboards, `${source}: dashboards`);
+  const dashboardExtractionRules = normalizeDashboardExtractionRules(
+    rawConfig.dashboard_extraction_rules ?? [],
+    source,
+  );
   const rules = normalizeRules(config.rules, source);
 
   return Object.freeze({
@@ -110,6 +124,7 @@ export function normalizeConfig(rawConfig, source = "config") {
     default_action: config.default_action,
     required_entities: requiredEntities,
     dashboards,
+    dashboard_extraction_rules: dashboardExtractionRules,
     rules,
   });
 }
@@ -198,6 +213,49 @@ function normalizeRules(value, source) {
   });
 }
 
+function normalizeDashboardExtractionRules(value, source) {
+  if (value == null) {
+    value = [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`${source}: dashboard_extraction_rules must be an array`);
+  }
+
+  const normalizedRules = cloneDashboardExtractionRules(DEFAULT_DASHBOARD_EXTRACTION_RULES);
+  for (const [index, rule] of value.entries()) {
+    const fieldPrefix = `${source}: dashboard_extraction_rules[${index}]`;
+    if (!rule || typeof rule !== "object" || Array.isArray(rule)) {
+      throw new Error(`${fieldPrefix} must be an object`);
+    }
+    if (typeof rule.card_type !== "string" || !rule.card_type.trim()) {
+      throw new Error(`${fieldPrefix}.card_type must be a non-empty string`);
+    }
+    if (rule.mode !== "template_entities") {
+      throw new Error(`${fieldPrefix}.mode must be "template_entities"`);
+    }
+    if (!Array.isArray(rule.fields) || rule.fields.length === 0) {
+      throw new Error(`${fieldPrefix}.fields must be a non-empty array of strings`);
+    }
+
+    const fields = rule.fields.map((field, fieldIndex) => {
+      if (typeof field !== "string" || !field.trim()) {
+        throw new Error(`${fieldPrefix}.fields[${fieldIndex}] must be a non-empty string`);
+      }
+      return field;
+    });
+
+    normalizedRules.push(
+      Object.freeze({
+        card_type: rule.card_type,
+        mode: "template_entities",
+        fields: Object.freeze(fields),
+      }),
+    );
+  }
+
+  return Object.freeze(normalizedRules);
+}
+
 function normalizeNonNegativeInteger(value, fieldName) {
   if (!Number.isInteger(value) || value < 0) {
     throw new Error(`${fieldName} must be a non-negative integer`);
@@ -210,4 +268,14 @@ function normalizeNonNegativeNumber(value, fieldName) {
     throw new Error(`${fieldName} must be a non-negative number`);
   }
   return value;
+}
+
+function cloneDashboardExtractionRules(rules) {
+  return rules.map((rule) =>
+    Object.freeze({
+      card_type: rule.card_type,
+      mode: rule.mode,
+      fields: Object.freeze([...rule.fields]),
+    }),
+  );
 }

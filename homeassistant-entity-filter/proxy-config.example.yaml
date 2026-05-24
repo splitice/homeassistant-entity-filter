@@ -9,6 +9,13 @@ default_action: allow
 required_entities: []
 dashboards:
   - default
+dashboard_extraction_rules:
+  - card_type: "custom:mushroom-template-badge"
+    mode: "template_entities"
+    fields:
+      - content
+      - icon
+      - color
 rules:
   - name: "deny cameras"
     match_type: regex

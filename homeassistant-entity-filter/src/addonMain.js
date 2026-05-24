@@ -10,6 +10,13 @@ const DEFAULT_INTERNAL_HOME_ASSISTANT_URL = "http://homeassistant:8123";
 const INTERNAL_HOME_ASSISTANT_HOST = "homeassistant";
 const INTERNAL_LISTEN_ADDR = "0.0.0.0:10111";
 const SUPERVISOR_WEBSOCKET_URL = "ws://supervisor/core/websocket";
+const BUILT_IN_DASHBOARD_EXTRACTION_RULES = Object.freeze([
+  Object.freeze({
+    card_type: "custom:mushroom-template-badge",
+    mode: "template_entities",
+    fields: Object.freeze(["content", "icon", "color"]),
+  }),
+]);
 
 export const DEFAULT_ADDON_OPTIONS = Object.freeze({
   transparent: true,
@@ -19,6 +26,7 @@ export const DEFAULT_ADDON_OPTIONS = Object.freeze({
   default_action: "allow",
   required_entities: [],
   dashboards: [],
+  dashboard_extraction_rules: BUILT_IN_DASHBOARD_EXTRACTION_RULES,
   rules: [],
 });
 
@@ -84,10 +92,17 @@ export function buildAddonRuntimeConfig(
     source = ADDON_OPTIONS_PATH,
   } = {},
 ) {
+  const mergedOptions = {
+    ...DEFAULT_ADDON_OPTIONS,
+    ...options,
+  };
+
   return normalizeConfig(
     {
-      ...DEFAULT_ADDON_OPTIONS,
-      ...options,
+      ...mergedOptions,
+      dashboard_extraction_rules: stripBuiltInDashboardExtractionRules(
+        mergedOptions.dashboard_extraction_rules,
+      ),
       homeassistant_url: homeAssistantUrl,
       access_token: "",
       listen_addr: INTERNAL_LISTEN_ADDR,
@@ -113,4 +128,37 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.error(error.message);
     process.exit(1);
   });
+}
+
+function stripBuiltInDashboardExtractionRules(rules) {
+  if (!Array.isArray(rules)) {
+    return rules;
+  }
+
+  let offset = 0;
+  while (
+    offset < BUILT_IN_DASHBOARD_EXTRACTION_RULES.length &&
+    offset < rules.length &&
+    isSameDashboardExtractionRule(rules[offset], BUILT_IN_DASHBOARD_EXTRACTION_RULES[offset])
+  ) {
+    offset += 1;
+  }
+
+  return rules.slice(offset);
+}
+
+function isSameDashboardExtractionRule(left, right) {
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") {
+    return false;
+  }
+  if (left.card_type !== right.card_type || left.mode !== right.mode) {
+    return false;
+  }
+  if (!Array.isArray(left.fields) || !Array.isArray(right.fields)) {
+    return false;
+  }
+  if (left.fields.length !== right.fields.length) {
+    return false;
+  }
+  return left.fields.every((field, index) => field === right.fields[index]);
 }

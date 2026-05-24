@@ -2,6 +2,7 @@ import http from "node:http";
 import { WebSocketServer } from "ws";
 import { BootstrapManager } from "./bootstrap.js";
 import { parseListenAddress } from "./config.js";
+import { EventSummaryReporter } from "./eventSummaryReporter.js";
 import { EntityUpdateRateMonitor } from "./entityUpdateRateMonitor.js";
 import { createReverseProxy } from "./httpProxy.js";
 import { RuleEngine } from "./ruleEngine.js";
@@ -22,6 +23,7 @@ export async function startServer(
     webSocketUrl: bootstrapWebSocketUrl,
     requiredEntities: config.required_entities,
     dashboards: config.dashboards,
+    dashboardExtractionRules: config.dashboard_extraction_rules,
     cacheTtlMs: config.bootstrap_cache_ttl_ms,
     logger,
   });
@@ -29,6 +31,7 @@ export async function startServer(
     thresholdPerMinute: config.warn_entity_updates_over_per_minute,
     logger,
   });
+  const eventSummaryReporter = new EventSummaryReporter({ logger });
   const reverseProxy = createReverseProxy({
     targetUrl,
     transparent: config.transparent,
@@ -38,6 +41,9 @@ export async function startServer(
 
   const server = http.createServer((req, res) => {
     reverseProxy.web(req, res);
+  });
+  server.once("close", () => {
+    eventSummaryReporter.close();
   });
 
   server.on("upgrade", (req, socket, head) => {
@@ -56,6 +62,7 @@ export async function startServer(
         bootstrapManager,
         bootstrapAccessToken,
         entityUpdateRateMonitor,
+        eventSummaryReporter,
         logger,
       });
       session.attach();

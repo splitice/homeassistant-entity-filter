@@ -1,7 +1,7 @@
 name: Home Assistant Entity Filter
 slug: homeassistant-entity-filter
 description: Transparent Home Assistant proxy with entity filtering and rate limiting
-version: 0.1.4
+version: 0.1.6
 url: https://github.com/splitice/homeassistant-entity-filter
 startup: application
 boot: auto
@@ -29,6 +29,13 @@ options:
   default_action: allow
   required_entities: []
   dashboards: []
+  dashboard_extraction_rules:
+    - card_type: custom:mushroom-template-badge
+      mode: template_entities
+      fields:
+        - content
+        - icon
+        - color
   rules: []
 schema:
   transparent: bool
@@ -40,6 +47,11 @@ schema:
     - str
   dashboards:
     - str
+  dashboard_extraction_rules:
+    - card_type: str
+      mode: "list(template_entities)"
+      fields:
+        - str
   rules:
     - name: str?
       match_type: "list(exact|regex)"

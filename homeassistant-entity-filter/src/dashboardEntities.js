@@ -1,114 +1,145 @@
-export function extractDashboardEntities(config) {
+const DIRECT_ENTITY_KEYS = new Set(["entity", "camera_image", "battery_soc"]);
+const TEMPLATE_HELPERS = [
+  "states",
+  "state_attr",
+  "is_state",
+  "is_state_attr",
+  "has_value",
+  "expand",
+];
+const TEMPLATE_ENTITY_PATTERN = new RegExp(
+  `\\b(?:${TEMPLATE_HELPERS.join("|")})\\(\\s*(['"])([^'"\\n]+)\\1`,
+  "g",
+);
+
+export const DEFAULT_DASHBOARD_EXTRACTION_RULES = Object.freeze([
+  Object.freeze({
+    card_type: "custom:mushroom-template-badge",
+    mode: "template_entities",
+    fields: Object.freeze(["content", "icon", "color"]),
+  }),
+]);
+
+export function extractDashboardEntities(
+  config,
+  extractionRules = DEFAULT_DASHBOARD_EXTRACTION_RULES,
+) {
   const entities = new Set();
-  const views = Array.isArray(config?.views) ? config.views : [];
-
-  for (const view of views) {
-    if (view && typeof view === "object" && !Array.isArray(view)) {
-      addEntities(entities, view);
-    }
-  }
-
+  const visited = new WeakSet();
+  visitNode(Array.isArray(config?.views) ? config.views : [], entities, visited, extractionRules);
   return entities;
 }
 
-function addEntities(entities, value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+function visitNode(node, entities, visited, extractionRules) {
+  if (!node || typeof node !== "object") {
+    return;
+  }
+  if (visited.has(node)) {
+    return;
+  }
+  visited.add(node);
+
+  if (Array.isArray(node)) {
+    for (const entry of node) {
+      visitNode(entry, entities, visited, extractionRules);
+    }
     return;
   }
 
-  addEntityId(entities, value);
-  if (Array.isArray(value.entities)) {
-    for (const entity of value.entities) {
-      addEntityId(entities, entity);
+  extractStructuredEntities(node, entities);
+  applyExtractionRules(node, entities, extractionRules);
+
+  for (const [key, value] of Object.entries(node)) {
+    if (key === "entities" && Array.isArray(value)) {
+      for (const entry of value) {
+        addEntityReference(entities, entry);
+      }
     }
-  }
-  if (value.card) {
-    addEntities(entities, value.card);
-  }
-  if (Array.isArray(value.cards)) {
-    for (const card of value.cards) {
-      addEntities(entities, card);
-    }
-  }
-  if (Array.isArray(value.elements)) {
-    for (const element of value.elements) {
-      addEntities(entities, element);
-    }
-  }
-  if (Array.isArray(value.badges)) {
-    for (const badge of value.badges) {
-      addEntityId(entities, badge);
-    }
-  }
-  if (Array.isArray(value.sections)) {
-    for (const section of value.sections) {
-      addEntities(entities, section);
-    }
+    visitNode(value, entities, visited, extractionRules);
   }
 }
 
-function addEntityId(entities, entity) {
-  if (!entity) {
-    return;
-  }
-
-  if (typeof entity === "string") {
-    if (looksLikeEntityId(entity)) {
-      entities.add(entity);
+function extractStructuredEntities(node, entities) {
+  for (const [key, value] of Object.entries(node)) {
+    if (isEntityValuedKey(key)) {
+      addEntityReference(entities, value);
     }
-    return;
   }
 
-  if (typeof entity !== "object" || Array.isArray(entity)) {
-    return;
-  }
+  addEntityReference(entities, node.target?.entity_id);
+  addEntityReference(entities, node.data?.entity_id);
+  addEntityReference(entities, node.service_data?.entity_id);
 
-  if (typeof entity.entity === "string" && looksLikeEntityId(entity.entity)) {
-    entities.add(entity.entity);
-  }
-  if (typeof entity.camera_image === "string" && looksLikeEntityId(entity.camera_image)) {
-    entities.add(entity.camera_image);
-  }
-  if (entity.tap_action) {
-    addFromAction(entities, entity.tap_action);
-  }
-  if (entity.hold_action) {
-    addFromAction(entities, entity.hold_action);
-  }
+  addConditionEntities(entities, node.visibility);
+  addConditionEntities(entities, node.conditions);
 }
 
-function addFromAction(entities, action) {
-  if (!action || typeof action !== "object" || Array.isArray(action)) {
-    return;
-  }
-  if (action.action !== "call-service") {
+function applyExtractionRules(node, entities, extractionRules) {
+  if (typeof node.type !== "string") {
     return;
   }
 
-  for (const key of ["target", "data", "service_data"]) {
-    const container = action[key];
-    if (!container || typeof container !== "object" || Array.isArray(container)) {
+  for (const rule of extractionRules) {
+    if (node.type !== rule.card_type) {
       continue;
     }
-    addEntityIdValue(entities, container.entity_id);
+    for (const field of rule.fields) {
+      if (typeof node[field] !== "string") {
+        continue;
+      }
+      if (rule.mode === "template_entities") {
+        for (const entityId of extractTemplateEntities(node[field])) {
+          entities.add(entityId);
+        }
+      }
+    }
   }
 }
 
-function addEntityIdValue(entities, value) {
-  if (typeof value === "string") {
-    if (looksLikeEntityId(value)) {
-      entities.add(value);
-    }
-    return;
-  }
+function addConditionEntities(entities, value) {
   if (!Array.isArray(value)) {
     return;
   }
   for (const entry of value) {
-    if (typeof entry === "string" && looksLikeEntityId(entry)) {
-      entities.add(entry);
+    if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      addEntityReference(entities, entry.entity);
     }
   }
+}
+
+function addEntityReference(entities, value) {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (looksLikeEntityId(normalized)) {
+      entities.add(normalized);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      addEntityReference(entities, entry);
+    }
+  }
+}
+
+function isEntityValuedKey(key) {
+  return DIRECT_ENTITY_KEYS.has(key) || key.endsWith("_entity") || key.endsWith("_sensor");
+}
+
+function extractTemplateEntities(text) {
+  const entities = new Set();
+  TEMPLATE_ENTITY_PATTERN.lastIndex = 0;
+
+  let match;
+  while ((match = TEMPLATE_ENTITY_PATTERN.exec(text)) !== null) {
+    const entityId = match[2].trim();
+    if (looksLikeEntityId(entityId)) {
+      entities.add(entityId);
+    }
+  }
+
+  return entities;
 }
 
 function looksLikeEntityId(value) {

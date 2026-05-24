@@ -10,15 +10,19 @@ export class BootstrapManager {
     webSocketUrl = null,
     requiredEntities = [],
     dashboards = [],
+    dashboardExtractionRules = [],
     cacheTtlMs = 300000,
     logger = console,
+    openConnection = openAuthenticatedConnection,
   }) {
     this.homeAssistantUrl = homeAssistantUrl;
     this.webSocketUrl = webSocketUrl;
     this.baseRequiredEntities = [...requiredEntities];
     this.dashboards = [...dashboards];
+    this.dashboardExtractionRules = [...dashboardExtractionRules];
     this.cacheTtlMs = cacheTtlMs;
     this.logger = logger;
+    this.openConnection = openConnection;
     this.cache = new Map();
   }
 
@@ -60,7 +64,7 @@ export class BootstrapManager {
   }
 
   async _fetch(accessToken, timeoutMs) {
-    const connection = await openAuthenticatedConnection({
+    const connection = await this.openConnection({
       homeAssistantUrl: this.homeAssistantUrl,
       webSocketUrl: this.webSocketUrl,
       accessToken,
@@ -95,7 +99,7 @@ export class BootstrapManager {
             continue;
           }
 
-          for (const entityId of extractDashboardEntities(config)) {
+          for (const entityId of extractDashboardEntities(config, this.dashboardExtractionRules)) {
             requiredEntities.add(entityId);
           }
         } catch (error) {

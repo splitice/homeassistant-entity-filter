@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseConfig } from "../src/config.js";
+import { DEFAULT_DASHBOARD_EXTRACTION_RULES } from "../src/dashboardEntities.js";
 import { RuleEngine } from "../src/ruleEngine.js";
 
 test("parseConfig applies defaults", () => {
@@ -10,6 +11,7 @@ test("parseConfig applies defaults", () => {
   assert.equal(config.warn_entity_updates_over_per_minute, 2);
   assert.equal(config.default_action, "allow");
   assert.deepEqual(config.required_entities, []);
+  assert.deepEqual(config.dashboard_extraction_rules, DEFAULT_DASHBOARD_EXTRACTION_RULES);
 });
 
 test("parseConfig accepts decimal warn thresholds", () => {
@@ -19,6 +21,26 @@ warn_entity_updates_over_per_minute: 1.5
 `);
 
   assert.equal(config.warn_entity_updates_over_per_minute, 1.5);
+});
+
+test("parseConfig appends user dashboard extraction rules after the built-in defaults", () => {
+  const config = parseConfig(`
+homeassistant_url: "http://example.com"
+dashboard_extraction_rules:
+  - card_type: custom:test-card
+    mode: template_entities
+    fields:
+      - markdown
+`);
+
+  assert.deepEqual(config.dashboard_extraction_rules, [
+    ...DEFAULT_DASHBOARD_EXTRACTION_RULES,
+    {
+      card_type: "custom:test-card",
+      mode: "template_entities",
+      fields: ["markdown"],
+    },
+  ]);
 });
 
 test("parseConfig rejects deny rules with rate limits", () => {
@@ -56,6 +78,64 @@ test("parseConfig rejects non-number warn thresholds", () => {
     () =>
       parseConfig('homeassistant_url: "http://example.com"\nwarn_entity_updates_over_per_minute: nope\n'),
     /warn_entity_updates_over_per_minute must be a non-negative number/,
+  );
+});
+
+test("parseConfig rejects invalid dashboard extraction card types", () => {
+  assert.throws(
+    () =>
+      parseConfig(`
+homeassistant_url: "http://example.com"
+dashboard_extraction_rules:
+  - card_type: ""
+    mode: template_entities
+    fields:
+      - content
+`),
+    /dashboard_extraction_rules\[0\]\.card_type must be a non-empty string/,
+  );
+});
+
+test("parseConfig rejects invalid dashboard extraction modes", () => {
+  assert.throws(
+    () =>
+      parseConfig(`
+homeassistant_url: "http://example.com"
+dashboard_extraction_rules:
+  - card_type: custom:test-card
+    mode: markdown_entities
+    fields:
+      - content
+`),
+    /dashboard_extraction_rules\[0\]\.mode must be "template_entities"/,
+  );
+});
+
+test("parseConfig rejects empty or invalid dashboard extraction fields", () => {
+  assert.throws(
+    () =>
+      parseConfig(`
+homeassistant_url: "http://example.com"
+dashboard_extraction_rules:
+  - card_type: custom:test-card
+    mode: template_entities
+    fields: []
+`),
+    /dashboard_extraction_rules\[0\]\.fields must be a non-empty array of strings/,
+  );
+
+  assert.throws(
+    () =>
+      parseConfig(`
+homeassistant_url: "http://example.com"
+dashboard_extraction_rules:
+  - card_type: custom:test-card
+    mode: template_entities
+    fields:
+      - content
+      - 42
+`),
+    /dashboard_extraction_rules\[0\]\.fields\[1\] must be a non-empty string/,
   );
 });
 

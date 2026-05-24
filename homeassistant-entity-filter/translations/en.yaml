@@ -20,6 +20,9 @@ configuration:
   dashboards:
     name: Dashboards
     description: Lovelace dashboard url_path values whose referenced entities should be treated as required.
+  dashboard_extraction_rules:
+    name: Dashboard extraction rules
+    description: Additional dashboard-bootstrap extraction rules. Built-in structural extraction and mushroom template badge parsing are already enabled by default.
   rules:
     name: Rules
     description: Ordered entity filter and rate-limit rules.

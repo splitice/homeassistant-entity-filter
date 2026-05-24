@@ -16,6 +16,7 @@ export class WsSession {
     bootstrapManager,
     bootstrapAccessToken = null,
     entityUpdateRateMonitor = null,
+    eventSummaryReporter = null,
     logger = console,
   }) {
     this.id = nextSessionId;
@@ -49,12 +50,14 @@ export class WsSession {
       resolvePolicy: (entityId) => this.resolvePolicy(entityId),
       emitMessages: (messages) => this.sendGeneratedMessages(messages),
       entityUpdateRateMonitor,
+      eventSummaryReporter,
       logger,
     });
     this.legacyManager = new LegacyStateChangedManager({
       resolvePolicy: (entityId) => this.resolvePolicy(entityId),
       emitMessages: (messages) => this.sendGeneratedMessages(messages),
       entityUpdateRateMonitor,
+      eventSummaryReporter,
       logger,
     });
   }

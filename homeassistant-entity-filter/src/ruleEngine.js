@@ -13,6 +13,7 @@ export class RuleEngine {
           action: rule.action,
           rateLimitMs: rule.action === "allow" ? rule.rateLimitMs : null,
           matchedRule: rule.name,
+          matchedExplicitRule: true,
         };
       }
     }
@@ -22,6 +23,7 @@ export class RuleEngine {
         action: "allow",
         rateLimitMs: null,
         matchedRule: "required",
+        matchedExplicitRule: false,
       };
     }
 
@@ -29,6 +31,7 @@ export class RuleEngine {
       action: this.defaultAction,
       rateLimitMs: null,
       matchedRule: "default",
+      matchedExplicitRule: false,
     };
   }
 

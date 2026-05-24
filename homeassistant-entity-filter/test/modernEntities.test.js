@@ -221,3 +221,101 @@ test("ModernEntitiesManager records only allowed post-snapshot updates", () => {
     { entityId: ENTITY_ID, timestamp: 0 },
   ]);
 });
+
+test("ModernEntitiesManager records forwarded, filtered, and superseded throttled entity updates", async () => {
+  const scheduler = new ManualScheduler();
+  const summaryReporter = createSummaryReporter();
+  const manager = new ModernEntitiesManager({
+    resolvePolicy: (entityId) => {
+      if (entityId === ENTITY_ID) {
+        return { action: "allow", rateLimitMs: 1000 };
+      }
+      return { action: "deny", rateLimitMs: null };
+    },
+    emitMessages: () => {},
+    eventSummaryReporter: summaryReporter,
+    scheduler,
+  });
+
+  manager.trackSubscription(4);
+
+  const initial = manager.handleServerMessage({
+    id: 4,
+    type: "event",
+    event: {
+      a: {
+        [ENTITY_ID]: { s: "10", a: {}, c: "ctx-1", lc: 1 },
+        "camera.porch": { s: "idle", a: {}, c: "ctx-2", lc: 1 },
+      },
+      c: {},
+    },
+  });
+
+  assert.equal(initial.length, 1);
+  assert.equal(summaryReporter.forwarded, 1);
+  assert.equal(summaryReporter.filtered, 1);
+  assert.equal(summaryReporter.rateLimitedDropped, 0);
+
+  const immediate = manager.handleServerMessage({
+    id: 4,
+    type: "event",
+    event: {
+      c: {
+        [ENTITY_ID]: { "+": { s: "11", lc: 2 } },
+        "camera.porch": { "+": { s: "busy", lc: 2 } },
+      },
+    },
+  });
+
+  assert.equal(immediate.length, 1);
+  assert.equal(summaryReporter.forwarded, 2);
+  assert.equal(summaryReporter.filtered, 2);
+  assert.equal(summaryReporter.rateLimitedDropped, 0);
+
+  manager.handleServerMessage({
+    id: 4,
+    type: "event",
+    event: {
+      c: {
+        [ENTITY_ID]: { "+": { s: "12", lc: 3 } },
+      },
+    },
+  });
+
+  assert.equal(summaryReporter.rateLimitedDropped, 0);
+
+  const superseding = manager.handleServerMessage({
+    id: 4,
+    type: "event",
+    event: {
+      c: {
+        [ENTITY_ID]: { "+": { s: "13", lc: 4 } },
+      },
+    },
+  });
+
+  assert.deepEqual(superseding, []);
+  assert.equal(summaryReporter.rateLimitedDropped, 1);
+
+  scheduler.advance(1000);
+  await Promise.resolve();
+
+  assert.equal(summaryReporter.forwarded, 3);
+});
+
+function createSummaryReporter() {
+  return {
+    forwarded: 0,
+    filtered: 0,
+    rateLimitedDropped: 0,
+    recordForwarded(count = 1) {
+      this.forwarded += count;
+    },
+    recordFiltered(count = 1) {
+      this.filtered += count;
+    },
+    recordRateLimitedDropped(count = 1) {
+      this.rateLimitedDropped += count;
+    },
+  };
+}

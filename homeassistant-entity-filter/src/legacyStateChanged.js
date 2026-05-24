@@ -3,12 +3,14 @@ export class LegacyStateChangedManager {
     resolvePolicy,
     emitMessages,
     entityUpdateRateMonitor = null,
+    eventSummaryReporter = null,
     scheduler = defaultScheduler,
     logger = console,
   }) {
     this.resolvePolicy = resolvePolicy;
     this.emitMessages = emitMessages;
     this.entityUpdateRateMonitor = entityUpdateRateMonitor;
+    this.eventSummaryReporter = eventSummaryReporter;
     this.scheduler = scheduler;
     this.logger = logger;
     this.subscriptions = new Map();
@@ -75,23 +77,31 @@ export class LegacyStateChangedManager {
 
     const policy = this.resolvePolicy(entityId);
     if (policy.action !== "allow") {
+      this.eventSummaryReporter?.recordFiltered(1);
       return [];
     }
 
     const now = this.scheduler.now();
-    this.entityUpdateRateMonitor?.record(entityId, now);
+    if (policy.matchedExplicitRule !== true) {
+      this.entityUpdateRateMonitor?.record(entityId, now);
+    }
 
     const rateLimitMs = policy.rateLimitMs ?? null;
     if (!rateLimitMs) {
+      this.eventSummaryReporter?.recordForwarded(1);
       return [message];
     }
 
     const slot = ensureEntitySlot(subscription, entityId, rateLimitMs);
     if (!slot.pendingMessage && now >= slot.nextAllowedAt) {
       slot.nextAllowedAt = now + rateLimitMs;
+      this.eventSummaryReporter?.recordForwarded(1);
       return [message];
     }
 
+    if (slot.pendingMessage) {
+      this.eventSummaryReporter?.recordRateLimitedDropped(1);
+    }
     slot.pendingMessage = structuredClone(message);
     this._scheduleFlush(subscription);
     return [];
@@ -141,9 +151,18 @@ export class LegacyStateChangedManager {
     }
 
     if (dueMessages.length > 0) {
-      Promise.resolve(this.emitMessages(dueMessages)).catch((error) => {
+      try {
+        const emitResult = this.emitMessages(dueMessages);
+        Promise.resolve(emitResult)
+          .then(() => {
+            this.eventSummaryReporter?.recordForwarded(dueMessages.length);
+          })
+          .catch((error) => {
+            this.logger.error(`legacy flush failed for subscription ${subscription.id}: ${error.message}`);
+          });
+      } catch (error) {
         this.logger.error(`legacy flush failed for subscription ${subscription.id}: ${error.message}`);
-      });
+      }
     }
 
     this._scheduleFlush(subscription);

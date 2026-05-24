@@ -117,6 +117,43 @@ test("LegacyStateChangedManager records allowed updates before rate limiting", (
   ]);
 });
 
+test("LegacyStateChangedManager records forwarded, filtered, and superseded throttled updates", async () => {
+  const scheduler = new ManualScheduler();
+  const summaryReporter = createSummaryReporter();
+  const manager = new LegacyStateChangedManager({
+    resolvePolicy: (entityId) => ({
+      action: entityId === "sensor.room_temp" ? "allow" : "deny",
+      rateLimitMs: entityId === "sensor.room_temp" ? 1000 : null,
+    }),
+    emitMessages: () => {},
+    eventSummaryReporter: summaryReporter,
+    scheduler,
+  });
+
+  manager.trackSubscription(9);
+
+  const first = manager.handleServerMessage(buildMessage(9, "sensor.room_temp", "10"));
+  assert.equal(first.length, 1);
+  assert.equal(summaryReporter.forwarded, 1);
+  assert.equal(summaryReporter.filtered, 0);
+  assert.equal(summaryReporter.rateLimitedDropped, 0);
+
+  const delayed = manager.handleServerMessage(buildMessage(9, "sensor.room_temp", "11"));
+  assert.deepEqual(delayed, []);
+  assert.equal(summaryReporter.rateLimitedDropped, 0);
+
+  manager.handleServerMessage(buildMessage(9, "sensor.room_temp", "12"));
+  manager.handleServerMessage(buildMessage(9, "sensor.blocked", "1"));
+
+  assert.equal(summaryReporter.filtered, 1);
+  assert.equal(summaryReporter.rateLimitedDropped, 1);
+
+  scheduler.advance(1000);
+  await Promise.resolve();
+
+  assert.equal(summaryReporter.forwarded, 2);
+});
+
 function buildMessage(id, entityId, state) {
   return {
     id,
@@ -130,6 +167,23 @@ function buildMessage(id, entityId, state) {
           state,
         },
       },
+    },
+  };
+}
+
+function createSummaryReporter() {
+  return {
+    forwarded: 0,
+    filtered: 0,
+    rateLimitedDropped: 0,
+    recordForwarded(count = 1) {
+      this.forwarded += count;
+    },
+    recordFiltered(count = 1) {
+      this.filtered += count;
+    },
+    recordRateLimitedDropped(count = 1) {
+      this.rateLimitedDropped += count;
     },
   };
 }

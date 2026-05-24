@@ -4,4 +4,6 @@ Transparent Home Assistant proxy with entity filtering, rate limiting, and dashb
 
 The app exposes a proxy on port `10111` and can be opened directly from Home Assistant using the app's Web UI button.
 
+Every 5 minutes, the proxy logs a rolling operational summary with counts for forwarded entity updates, filter drops, and rate-limit coalescing drops.
+
 See `DOCS.md` for installation notes, configuration, and examples.

@@ -98,6 +98,10 @@ export class WsSession {
       this.upstreamSocket.on("error", handleError);
       this.upstreamSocket.on("close", handleClose);
     });
+    this.upstreamOpenPromise.catch(() => {
+      // The socket error handler owns teardown; observe early connect failures
+      // so a refused upstream cannot become an unhandled rejection.
+    });
 
     this.clientSocket.on("message", (data, isBinary) => {
       if (isBinary) {

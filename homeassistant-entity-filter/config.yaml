@@ -1,7 +1,7 @@
 name: Home Assistant Entity Filter
 slug: homeassistant-entity-filter
 description: Transparent Home Assistant proxy with entity filtering and rate limiting
-version: 0.1.6
+version: 0.1.7
 url: https://github.com/splitice/homeassistant-entity-filter
 startup: application
 boot: auto
